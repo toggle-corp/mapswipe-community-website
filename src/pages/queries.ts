@@ -6,19 +6,19 @@ export interface ProjectProperties {
 	name: string;
 	projectType: ProjectType;
 	description?: string | null;
-	status?: ProjectStatus;
-	createdAt?: string;
-	modifiedAt?: string;
-	image?: {
-    	id: string;
-    	file: {
+	status: ProjectStatus;
+	createdAt?: number | null;
+	modifiedAt?: string | null;
+	image: {
+        id: string;
+        file: {
         	name: string;
         	url: string;
-    	};
-    	createdAt: string;
+        };
+        createdAt: string;
 	};
 	requestingOrganizationId?: string;
-	progress?: string | null;
+	progress?: number;
 	requestingOrganization: {
     	id: string;
     	name: string;
@@ -27,13 +27,29 @@ export interface ProjectProperties {
 	exportAggregatedResults?: UrlInfo;
 	exportAggregatedResultsWithGeometry?: UrlInfo;
 	exportGroups?: UrlInfo;
-	exportHistory: UrlInfo;
-	exportAreaOfInterest?: UrlInfo;
+	exportHistory?: UrlInfo;
 	exportResults?: UrlInfo;
 	exportTasks?: UrlInfo;
 	exportUsers?: UrlInfo;
+    exportAreaOfInterest: UrlInfo;
     exportHotTaskingManagerGeometries?: UrlInfo;
-    coordinates?: [number, number] | undefined;
+    totalArea: number | null;
+    numberOfContributorUsers: number | null;
+    aoiGeometry?: {
+        id: string;
+        centroid: [number, number] | null;
+        totalArea: number | null;
+    };
+}
+
+export interface GlobalExportAssets {
+    type: string;
+    lastUpdatedAt: string;
+    fileSize: number;
+    file: {
+        name: string;
+        url: string;
+    };
 }
 
 export interface ProjectsData {
@@ -48,10 +64,11 @@ export interface ProjectsData {
         }[];
     };
     communityStats: {
-        totalSwipes?: string;
-        totalUserGroups?: string;
-        totalContributors?: string;
-    }
+        totalSwipes?: number;
+        totalUserGroups?: number;
+        totalContributors?: number;
+    };
+    globalExportAssets: GlobalExportAssets[];
 }
 
 export interface UrlInfo {
@@ -81,35 +98,9 @@ export interface FeatureCollection {
     features: Feature[];
 }
 
-
-export const organizationsList = gql`
-    query Organizations {
-        organizations {
-            results {
-                id
-                name
-            }
-        }
-    }
-`;
-
 export const projectsData = gql`
-    query Projects(
-        $includeAll: Boolean!,
-        $projectType: ProjectTypeEnum,
-        $status: ProjectStatusEnum,
-        $requestingOrganizationId: ID,
-        $pagination: OffsetPaginationInput
-    ) {
-        projects(
-            includeAll: $includeAll,
-            pagination: $pagination,
-            filters: {
-                projectType: { exact: $projectType },
-                status: { exact: $status },
-                requestingOrganizationId: { exact: $requestingOrganizationId }
-            }
-        ) {
+    query Projects($includeAll: Boolean!) {
+        projects(includeAll: $includeAll) {
             totalCount
             results {
                 id
@@ -226,12 +217,11 @@ export const projectsData = gql`
                 modifiedAt
                 region
                 requestingOrganizationId
-            }
-        }
-        organizations {
-            results {
-                id
-                name
+                numberOfContributorUsers
+                aoiGeometry {
+                    centroid
+                    id
+                }
             }
         }
         communityStats {
@@ -239,6 +229,21 @@ export const projectsData = gql`
             totalContributors
             totalUserGroups
             totalSwipes
+        }
+        organizations {
+            results {
+                id
+                name
+            }
+        }
+        globalExportAssets {
+            type
+            lastUpdatedAt
+            fileSize
+            file {
+                url
+                name
+            }   
         }
     }
 `;
@@ -358,6 +363,8 @@ export const projectList = gql`
             createdAt
             modifiedAt
             region
+            totalArea
+            numberOfContributorUsers
         }
     }
 `;

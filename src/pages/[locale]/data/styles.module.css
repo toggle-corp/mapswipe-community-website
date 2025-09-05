@@ -313,11 +313,6 @@
                     }
                 }
             }
-            .pager {
-                display: flex;
-                align-items: flex-end;
-                justify-content: flex-end;
-            }
         }
     }
 
@@ -325,7 +320,7 @@
         .urlList {
             display: grid;
             grid-gap: var(--spacing-extra-large);
-            grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr));
+            grid-template-columns: repeat(auto-fit, minmax(30rem, 1fr));
 
             @media screen and (max-width: 24rem) {
                 grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));

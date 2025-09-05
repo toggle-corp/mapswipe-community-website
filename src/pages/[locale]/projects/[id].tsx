@@ -2,11 +2,8 @@ import React, { useMemo } from 'react';
 import dynamic from 'next/dynamic';
 import { GetStaticProps, GetStaticPaths } from 'next';
 import { SSRConfig, useTranslation } from 'next-i18next';
-import { _cs, bound } from '@togglecorp/fujs';
+import { _cs, bound, listToMap } from '@togglecorp/fujs';
 import { serverSideTranslations } from 'next-i18next/serverSideTranslations';
-import { remark } from 'remark';
-import matter from 'gray-matter';
-import html from 'remark-html';
 import {
     IoDownloadOutline,
     IoEllipseSharp,
@@ -28,11 +25,10 @@ import Section from 'components/Section';
 import Heading from 'components/Heading';
 import KeyFigure from 'components/KeyFigure';
 import Link from 'components/Link';
-import { gql, request } from 'graphql-request';
+import { request } from 'graphql-request';
 
 import useSizeTracking from 'hooks/useSizeTracking';
 
-import getProjectCentroids from 'utils/requests/projectCentroids';
 import getProjectHistory, { ProjectHistory } from 'utils/requests/projectHistory';
 import {
     ProjectStatus,
@@ -47,7 +43,14 @@ import {
     getPathData,
     getScaleFunction,
 } from 'utils/chart';
-import { projectList, ProjectProperties, projectsData, ProjectsData, UrlInfo } from 'pages/queries';
+import {
+    projectList,
+    ProjectProperties,
+    ProjectsData,
+    projectsData,
+    UrlInfo,
+} from 'pages/queries';
+import { graphqlRequest } from 'utils/requests/graphqlRequest';
 
 import i18nextConfig from '../../../../next-i18next.config';
 
@@ -112,6 +115,8 @@ interface Props extends SSRConfig {
     exportHotTaskingManagerGeometries: UrlInfo;
     exportModerateToHighAgreementYesMaybeGeometries: UrlInfo;
     projectHistory: ProjectHistory[];
+    totalArea: number | null;
+    numberOfContributorUsers: number | null;
 }
 
 function Project(props: Props) {
@@ -138,6 +143,8 @@ function Project(props: Props) {
         projectHistory,
         exportHotTaskingManagerGeometries,
         exportModerateToHighAgreementYesMaybeGeometries,
+        totalArea,
+        numberOfContributorUsers,
     } = props;
 
     const svgContainerRef = React.useRef<HTMLDivElement>(null);
@@ -152,25 +159,25 @@ function Project(props: Props) {
         if (!projectHistory || projectHistory.length === 0) {
             return [[], [], [], []];
         }
-    
+
         const timestamps = projectHistory.map((ph) => ph.timestamp);
         const initialTimeBounds = getBounds(timestamps);
-    
+
         const NUM_BREAKPOINT_X = 5;
         const timeDiff = initialTimeBounds.max - initialTimeBounds.min;
         const tickDuration = Math.ceil(timeDiff / NUM_BREAKPOINT_X);
-    
+
         const timeBounds = {
             min: initialTimeBounds.min,
             max: initialTimeBounds.min + (tickDuration * NUM_BREAKPOINT_X),
         };
-    
+
         const xScale = getScaleFunction(
             timeBounds,
             { min: 0, max: svgBounds.width },
             { start: chartMargin.left, end: chartMargin.right },
         );
-    
+
         const percentageBound = { min: 0, max: 100 };
         const yScale = getScaleFunction(
             percentageBound,
@@ -178,28 +185,28 @@ function Project(props: Props) {
             { start: chartMargin.top, end: chartMargin.bottom },
             true,
         );
-    
+
         const percentageTicks = [0, 20, 40, 60, 80, 100].map((percentage) => ({
             value: percentage,
             y: yScale(percentage),
         }));
-    
+
         const points = (projectHistory ?? []).map((hist) => ({
             x: xScale(hist.timestamp),
             y: yScale(bound(100 * hist.progress, 0, 100)),
         }));
-    
+
         const timeTicks = Array.from(Array(NUM_BREAKPOINT_X + 1)).map((_, i) => {
             const timestamp = initialTimeBounds.min + tickDuration * i;
             const date = new Date(timestamp);
-    
+
             return {
                 date,
                 timestamp,
                 x: xScale(timestamp),
             };
         });
-    
+
         return [
             points,
             [
@@ -210,67 +217,90 @@ function Project(props: Props) {
             timeTicks,
             percentageTicks,
         ];
-    }, [projectHistory, svgBounds]);    
+    }, [projectHistory, svgBounds]);
 
     const { t } = useTranslation('project');
 
-    const projectStatusOptions: Record<string, ProjectStatusOption> = useMemo(() => ({
-        active: {
-            key: 'READY',
-            label: t('active-projects'),
-            icon: (<IoEllipseSharp className={styles.active} />),
-        },
-        finished: {
+    const projectStatusOptions: ProjectStatusOption[] = useMemo(() => ([
+        {
             key: 'PUBLISHED',
-            label: t('finished-projects'),
+            label: t('published'),
+            icon: (<IoEllipseSharp />),
+        },
+        {
+            key: 'WITHDRAWN',
+            label: t('withdrawn'),
+            icon: (<IoEllipseSharp  />),
+        },
+        {
+            key: 'FINISHED',
+            label: t('finished'),
             icon: (<IoEllipseSharp className={styles.finished} />),
         },
-    }), [t]);
+    ]), [t]);
 
-    const projectTypeOptions: Record<string, ProjectTypeOption> = useMemo(() => ({
-        1: {
+    const projectTypeOptions: ProjectTypeOption[] = useMemo(() => ([
+        {
             key: 'FIND',
-            label: t('build-area'),
+            label: t('type-find-title'),
             icon: (
-                <ProjectTypeIcon type="1" size="small" />
+                <ProjectTypeIcon type="FIND" size="small" />
             ),
         },
-        2: {
+        {
             key: 'VALIDATE',
-            label: t('footprint'),
+            label: t('type-validate-title'),
             icon: (
-                <ProjectTypeIcon type="2" size="small" />
+                <ProjectTypeIcon type="VALIDATE" size="small" />
             ),
         },
-        3: {
+        {
             key: 'COMPARE',
-            label: t('change-detection'),
+            label: t('type-compare-title'),
             icon: (
-                <ProjectTypeIcon type="3" size="small" />
+                <ProjectTypeIcon type="COMPARE" size="small" />
             ),
         },
-        4: {
-            key: '4',
-            label: t('completeness'),
-            icon: (
-                <ProjectTypeIcon type="4" size="small" />
-            ),
-        },
-        7: {
-            key: '7',
-            label: t('street'),
-            icon: (
-                <ProjectTypeIcon type="7" size="small" />
-            ),
-        },
-        10: {
+        {
             key: 'COMPLETENESS',
-            label: t('validate-image'),
+            label: t('type-completeness-title'),
             icon: (
-                <ProjectTypeIcon type="10" size="small" />
+                <ProjectTypeIcon type="COMPLETENESS" size="small" />
             ),
         },
-    }), [t]);
+        {
+            key: 'VALIDATE_IMAGE',
+            label: t('type-validate-image-title'),
+            icon: (
+                <ProjectTypeIcon type="VALIDATE_IMAGE" size="small" />
+            ),
+        },
+        {
+            key: 'STREET',
+            label: t('type-streets-view-title'),
+            icon: (
+                <ProjectTypeIcon type="STREET" size="small" />
+            ),
+        },
+    ]), [t]);
+
+    const projectTypeOptionsMap = useMemo(() => (
+        listToMap(
+            projectTypeOptions,
+            (item) => item.key,
+            (item) => item,
+        )
+    ), [projectTypeOptions]);
+
+    const projectStatusOptionMap = useMemo(() => (
+        listToMap(
+            projectStatusOptions,
+            (item) => item.key,
+            (item) => item,
+        )
+    ), [projectStatusOptions]);
+
+    const roundedTotalArea = Math.round(totalArea ?? 0);
 
     return (
         <Page contentClassName={_cs(styles.project, className)}>
@@ -290,14 +320,14 @@ function Project(props: Props) {
                             {projectType && (
                                 <Tag
                                     spacing="medium"
-                                    icon={projectTypeOptions[projectType]?.icon}
+                                    icon={projectTypeOptionsMap[projectType]?.icon}
                                 >
                                     {projectType}
                                 </Tag>
                             )}
                             {status && (
                                 <Tag
-                                    icon={projectStatusOptions[status]?.icon}
+                                    icon={projectStatusOptionMap[status]?.icon}
                                 >
                                     {status}
                                 </Tag>
@@ -366,11 +396,10 @@ function Project(props: Props) {
                             />
                         </div>
                     </div>
-                    {/* // TODO: Add stats */}
                     <div className={styles.stats}>
                         <KeyFigure
                             className={_cs(styles.largeFigure, styles.figure)}
-                            value={undefined}
+                            value={roundedTotalArea}
                             variant="circle"
                             label={(
                                 <span>
@@ -385,7 +414,7 @@ function Project(props: Props) {
                             className={styles.figure}
                             variant="circle"
                             circleColor="complement"
-                            value={undefined}
+                            value={numberOfContributorUsers}
                             label={t('project-contributors-text')}
                         />
                     </div>
@@ -404,7 +433,7 @@ function Project(props: Props) {
                             day: 'numeric',
                         }),
                     })
-                )}                
+                )}
             >
                 {projectGeoJSON && (
                     <div className={styles.mapContainer}>
@@ -422,7 +451,7 @@ function Project(props: Props) {
                         </div>
                         <div className={styles.track}>
                             <div
-                                style={{ width: `${process}%` }}
+                                style={{ width: `${progress}%` }}
                                 className={styles.progress}
                             />
                         </div>
@@ -827,18 +856,17 @@ export const getI18nPaths = () => (
     }))
 );
 
-export const getStaticPaths: GetStaticPaths = async () => {
-    const projects = await getProjectCentroids();
+export const getStaticPaths: GetStaticPaths = async ({ locales }) => {
+    const data: ProjectsData = await request(graphqlEndpoint, projectsData, { includeAll: true });
+    const projects = data?.projects?.results ?? [];
 
-    const pathsWithParams = projects?.features.flatMap((feature) => {
-        const withLocales = i18nextConfig.i18n.locales.map((lng) => ({
-            params: {
-                id: feature.properties.id,
+    const pathsWithParams =
+        projects.flatMap((project: { id: string }) =>
+            (locales ?? []).map((lng: string) => ({
+                params: { id: project.id.toString() },
                 locale: lng,
-            },
-        }));
-        return withLocales;
-    });
+            }))
+        );
 
     return {
         paths: pathsWithParams,
@@ -847,10 +875,10 @@ export const getStaticPaths: GetStaticPaths = async () => {
 };
 
 export const getStaticProps: GetStaticProps<ProjectProperties> = async (context) => {
-    const locale = context?.params?.locale as string;
-    const projectId = context?.params?.id as string;
+    const locale = context.locale ?? 'en';
+    const projectId = context.params?.id as string;
 
-    const data = await request(
+    const data = await graphqlRequest<{ project: ProjectProperties }>(
         graphqlEndpoint,
         projectList,
         { id: projectId },

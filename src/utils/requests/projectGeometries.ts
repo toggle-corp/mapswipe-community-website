@@ -2,9 +2,7 @@ import {
     memoize,
     ProjectStatus,
     ProjectType,
-    timeIt,
     parseProjectName,
-    supportedProjectTypes,
     graphqlEndpoint,
 } from 'utils/common';
 import request from 'graphql-request';
@@ -27,10 +25,6 @@ interface PropertiesWithName extends ProjectProperties {
     topic: string;
     region: string;
     taskNumber: string;
-    requestingOrganization: {
-        id: string;
-        name: string;
-    };
     legacyName?: false;
 }
 
@@ -70,14 +64,11 @@ const getProjectGeometries = memoize(async (): Promise<ProjectResponse> => {
                 if (!feature.exportAreaOfInterest?.file?.url) {
                     return false;
                 }
-                if (!supportedProjectTypes.includes(feature?.projectType)) {
-                    return false;
-                }
+
                 return (
-                    feature.status === 'READY' ||
-                    feature.status === 'ARCHIVED' ||
+                    feature.status === 'FINISHED' ||
                     feature.status === 'PUBLISHED' ||
-                    feature.status === 'MARKED_AS_READY'
+                    feature.status === 'WITHDRAWN'
                 );
             })
             .map(async (feature) => {
@@ -86,15 +77,15 @@ const getProjectGeometries = memoize(async (): Promise<ProjectResponse> => {
                 const projectName = parseProjectName(feature.name);
                 let { status } = feature;
 
-                if (status === 'READY') status = 'MARKED_AS_READY';
-                if (status === 'ARCHIVED') status = 'PUBLISHED';
+                if (status === 'FINISHED') status = 'FINISHED';
+                if (status === 'PUBLISHED') status = 'PUBLISHED';
 
                 const properties: PropertiesWithLegacyName | PropertiesWithName = projectName
                     ? { ...feature, ...projectName, status }
                     : { ...feature, status, legacyName: true };
 
                 return {
-                    type: 'Feature',
+                    type: 'Feature' as const,
                     properties,
                     geometry,
                 };
@@ -109,3 +100,4 @@ const getProjectGeometries = memoize(async (): Promise<ProjectResponse> => {
 });
 
 export default getProjectGeometries;
+

@@ -3,9 +3,40 @@ import {
     caseInsensitiveSubmatch,
     compareStringSearch,
 } from '@togglecorp/fujs';
+import { gql } from 'graphql-request';
+import { graphqlRequest } from 'utils/requests/graphqlRequest';
 
+export const enumsQuery = gql`
+    query Enums {
+        enums {
+            ProjectTypeEnum {
+                key
+                label
+            }
+            ProjectStatusEnum {
+                key
+                label
+            }
+        }
+    }
+`;
+
+export interface EnumResponse {
+    enums: {
+        ProjectTypeEnum: {
+            key: string;
+            label: string;
+        }[];
+        ProjectStatusEnum: {
+            key: string;
+            label: string;
+        }[];
+    };
+  }
+  
 export const graphqlEndpoint = process.env.MAPSWIPE_COMMUNITY_API_ENDPOINT as string;
 
+// FIXME: Find the value of supported project type
 export const supportedProjectTypes = [1, 2, 3, 4, 10, 7];
 
 export interface Stats {
@@ -84,19 +115,30 @@ export function memoize<A extends Array<any>, R>(func: (...args: A) => R) {
     };
 }
 
-export type ProjectStatus = 'DRAFT' | 'MARKED_AS_READY' | 'FAILED' | 'READY' | 'PUBLISHED' | 'PAUSED' | 'ARCHIVED' | 'DISCARDED';
-
-<<<<<<< HEAD
-export type ProjectType = 1 | 2 | 3 | 4 | 10 | 7;
-||||||| parent of a58531b (feature(integrate-api): API integration)
-export type ProjectType = 1 | 2 | 3 | 4 | 10;
-=======
-export const supportedProjectTypes = ['FIND', 'COMPARE', 'VALIDATE', 'ANALYZE', 'OTHER'];
-
-export type ProjectType = 'FIND' | 'VALIDATE' | 'VALIDATE_IMAGE' | 'COMPARE' | 'COMPLETENESS';
-
-// export type ProjectType = 1 | 2 | 3 | 4 | 10;
->>>>>>> a58531b (feature(integrate-api): API integration)
+export async function fetchEnums() {
+    const data: EnumResponse = await graphqlRequest<EnumResponse>(
+        graphqlEndpoint,
+        enumsQuery
+    );
+  
+    const projectTypes = data.enums.ProjectTypeEnum.map((item) => ({
+        key: item.key,
+        label: item.label,
+    }));
+  
+    const projectStatuses = data.enums.ProjectStatusEnum.map((item) => ({
+        key: item.key,
+        label: item.label,
+    }));
+  
+    return {
+        projectTypes,
+        projectStatuses,
+    };
+}
+  
+export type ProjectStatus = EnumResponse['enums']['ProjectStatusEnum'][number]['key'];
+export type ProjectType = EnumResponse['enums']['ProjectTypeEnum'][number]['key'];
 
 export interface ProjectStatusOption {
     key: ProjectStatus;
@@ -110,30 +152,14 @@ export interface ProjectTypeOption {
     icon?: React.ReactNode;
 }
 
-export const projectNameMapping: {
-    [key in ProjectTypeOption['key']]: string
-} = {
-<<<<<<< HEAD
-    1: 'Build Area',
-    2: 'Footprint',
-    3: 'Change Detection',
-    4: 'Completeness',
-    10: 'Validate Image',
-    7: 'Street',
-||||||| parent of a58531b (feature(integrate-api): API integration)
-    1: 'Build Area',
-    2: 'Footprint',
-    3: 'Change Detection',
-    4: 'Completeness',
-    10: 'Validate Image',
-=======
-    FIND: 'Build Area',
-    VALIDATE: 'Footprint',
-    COMPARE: 'Change Detection',
-    COMPLETENESS: 'Completeness',
-    VALIDATE_IMAGE: 'Validate Image',
->>>>>>> a58531b (feature(integrate-api): API integration)
-};
+export async function getProjectNameMapping() {
+    const { projectTypes } = await fetchEnums();
+  
+    return projectTypes.reduce((acc, type) => {
+      acc[type.key as ProjectType] = type.label;
+      return acc;
+    }, {} as Record<ProjectType, string>);
+}  
 
 const mb = 1024 * 1024;
 export function getFileSizeProperties(fileSize: number) {
